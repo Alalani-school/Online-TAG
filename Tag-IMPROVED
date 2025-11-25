@@ -1,1 +1,46 @@
+int tagCooldown = 1000;
+int lastTagTime = 0;
+boolean inHomeScreen = true;
 
+class player {
+  float x, y;
+  float velocityX = 0, velocityY = 0;
+  float playerSize = 50;
+  float playerSpeed = 5;
+  float gravity = 0.6;
+  float jumpForce = -15;
+  boolean isOnGround = false;
+  int maxJumps = 2;
+  int jumpsRemaining;
+  boolean moveLeft = false;
+  boolean moveRight = false;
+  boolean isSeeker;
+  String name;
+  color colour;
+  player(float startX, float startY, String pName, color playerColour, boolean startSeek) {
+    this.x = startX;
+    this.y = startY;
+    this.name = pName;
+    this.colour = playerColour;
+    this.isSeeker = startSeek;
+  }
+}
+class button {
+  float x, y, w, h;
+  color colour;
+  String text;
+  button(float X, float Y, float W, float H, color buttonColour, String buttonText) {
+    this.x = X;
+    this.y = Y;
+    this.w = W;
+    this.h = H;
+    this.colour = buttonColour;
+    this.text = buttonText;
+  }
+  void show() {
+    fill(this.colour);
+    rect(this.x, this.y, this.w, this.h);
+    textSize(40);
+    text(this.text, this.x + 10, this.y + 20);
+  }
+}
