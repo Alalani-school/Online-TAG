@@ -1,0 +1,18 @@
+import websockets.*;
+WebsocketServer wss;
+
+void setup() {
+  wss = new WebsocketServer(this, 8080, "/TAG");
+  size(500, 100);
+}
+
+void draw() {
+  background(0);
+  textSize(40);
+  text("SERVER ONLINE", width/2 - 130, height/2 + 20);
+}
+
+void WebsocketNewClientEvent(WebsocketClient client) {
+  client.sendMessage("Connected");
+  println("connected");
+}
