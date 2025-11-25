@@ -1,0 +1,759 @@
+import websockets.*;
+int timeLeft = 200;        // total game time in seconds
+int startTime = -1;
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////// Server Comunication Variables
+String connectionIP = "localhost";
+boolean isConnected;
+boolean isPlayer1;
+boolean isServer;
+boolean connecting = false;
+boolean connectionScreen = false;
+char lastChar;
+WebsocketClient wsc;
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////// Player 1 variables (Yellow Player - WASD)
+float playerX, playerY;
+float playerSize = 50;
+float playerSpeed = 5;
+float velocityX = 0;
+float velocityY = 0;
+float gravity = 0.6;
+float jumpForce = -15;
+boolean isOnGround = false;
+int maxJumps = 2;
+int jumpsRemaining;
+boolean moveLeft = false;
+boolean moveRight = false;
+String player1Name = "YELLOW";
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////// Player 2 variables (Red Player - Arrow Keys)
+float player2X, player2Y;
+float player2VelocityX = 0;
+float player2VelocityY = 0;
+boolean player2IsOnGround = false;
+int player2JumpsRemaining;
+boolean player2MoveLeft = false;
+boolean player2MoveRight = false;
+String player2Name = "RED";
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////Seeker + Tag Variables
+boolean redSeeker = true;
+boolean yellowSeeker = false;
+float seekerX;
+float seekerY;
+float seekerSize;
+float PlayerSeeker;
+int tagCooldown = 1000;
+int lastTagTime = 0;
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////Play Button + Text
+
+
+
+
+boolean inHomeScreen = true;
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////Bug Fixes
+
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////// Floor and platforms
+Rectangle floorRect;
+Rectangle[] platforms;
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////Setup Start
+void setup() {
+  fullScreen(1);
+  rectMode(CORNER);
+  c1 =  new Carriage(875, 200, 800);
+
+
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////// Start player 1 above floor
+  playerX = width / 2 - 100;
+  playerY = 50;
+  jumpsRemaining = maxJumps; // Initialize jumps remaining for Player 1
+
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////// Start player 2 above floor, slightly offset
+  player2X = width / 2 + 100;
+  player2Y = 50;
+  player2JumpsRemaining = maxJumps; // Initialize jumps remaining for Player 2
+
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////// Floor platform (x, y, width, height)
+  floorRect = new Rectangle(0, 990, width, 20);
+
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////// Other platforms
+  platforms = new Rectangle[] {
+    floorRect, // Add the floor to the platforms array
+    new Rectangle(000, 0.1, width, 20), // Roof platform
+    new Rectangle(750, 70, 400, 20), // Spawn platform
+    new Rectangle(750, 200, 100, 20), //Horizontal
+    new Rectangle(1050, 200, 100, 20), //Horizontal2
+    new Rectangle(630, 200, 20, 400), //Vertical 1
+    new Rectangle(850, 200, 20, 400), //Vertical 2
+    new Rectangle(1030, 200, 20, 400), //Vertical 3
+    new Rectangle(1250, 200, 20, 400), //Vertical 4
+    new Rectangle(1780, 100, 20, 400), //Right Wall
+    new Rectangle(100, 100, 20, 400), //Left Wall
+    new Rectangle(1780, 600, 20, 150), //Right Wall Bottom
+    new Rectangle(100, 600, 20, 150), //Left Wall Bottom
+    new Rectangle(430, 500, 100, 20), //Left Middle Platform
+    new Rectangle(1350, 500, 100, 20), //Right Middle Platform
+    new Rectangle(230, 800, 100, 20), //Left Middle Platform2
+    new Rectangle(1550, 800, 100, 20), //Right Middle Platform2
+    new Rectangle(550, 200, 100, 20), //Bottom 1
+    new Rectangle(850, 870, 200, 20), //Bottom 2
+    new Rectangle(1250, 200, 100, 20), //Bottom 3
+  };
+  PlayerSeeker = 2;
+  seekerX = player2X;
+  seekerY = player2Y;
+  seekerSize = 10;
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////Play Button + Home Screen
+}
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////Setup Ends/Draw Starts
+void draw() {
+
+
+  if (inHomeScreen) {
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////// HOME SCREEN
+    background(0);
+    fill(255);
+    textAlign(CENTER, CENTER);
+    textSize(300);
+    text("TAG", width / 2, height / 3);
+
+    // Draw Play button
+    fill(50, 200, 250);
+    rect(width / 2 - 100, height / 2, 200, 80);
+    fill(0);
+    textSize(40);
+    text("PLAY", width / 2, height / 2 + 40);
+
+    fill(50, 200, 250);
+    rect(width / 2 - 115, height/2 + 100, 230, 80);
+    fill(0);
+    text("ONLINE PLAY", width/2, height/2 + 140);
+  } else if (connectionScreen) {
+    background(0);
+    fill(255);
+    text("ENTER SERVER IP", width/2, height/2);
+    rect(width/2 - 150, height - 200, 300, 40);
+    fill(0);
+    text(connectionIP, width/2 - 20, height/2 + 300);
+    //Connect Button
+    fill(50, 100, 250);
+    rect(width/2 - 100, height/2 + 80, 200, 80);
+    fill(0);
+    text("CONNECT", width/2, height/2 + 120);
+  } else {
+    background(30);
+
+    c1.display();
+
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////// Player 1 Logic
+    updateMovement(1);
+    applyGravity(1);
+    checkCollisions(1);
+
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////// Player 2 Logic
+    updateMovement(2);
+    applyGravity(2);
+    checkCollisions(2);
+
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////// Check and resolve player-to-player collision after individual platform collisions
+    checkPlayerToPlayerCollision();
+
+    drawLevel();
+    drawPlayer(1); //////////////////////////////////////////////////////////////////////////////////////////////////////////////// Draw Player 1
+    drawPlayer(2); //////////////////////////////////////////////////////////////////////////////////////////////////////////////// Draw Player 2
+
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////Change Seeker Position
+    if (redSeeker) {
+      seekerX = player2X;
+      seekerY = player2Y;
+    } else if (yellowSeeker) {
+      seekerX = playerX;
+      seekerY = playerY;
+    }
+
+    circle(seekerX, seekerY, seekerSize);
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////Timer + Winning
+    if (!inHomeScreen && startTime != -1) {
+      timeLeft = 200 - ((millis() - startTime) / 1000);
+      timeLeft = max(timeLeft, 0);
+
+      textSize(70);
+      fill(255);
+      text(timeLeft, 100, 100);
+
+      if (timeLeft == 0) {
+        // Game Over logic here...
+        if (redSeeker) {
+          background(#EBFF1A);
+          fill(0);
+          textAlign(CENTER, CENTER);
+          textSize(100);
+          text("Yellow Wins!", width/2, height/2);
+        }
+        if (yellowSeeker) {
+          background(#F50207);
+          fill(0);
+          textAlign(CENTER, CENTER);
+          textSize(100);
+          text("Red Wins!", width/2, height/2);
+        }
+      }
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////// //TAG+COOLDOWN
+
+    float dx = playerX - player2X;
+    float dy = playerY - player2Y;
+    float distance = sqrt(dx * dx + dy * dy);
+    float minDistance = playerSize * 1.2;
+
+
+    if (distance < minDistance && millis() - lastTagTime > tagCooldown) {
+      if (redSeeker) {
+        redSeeker = false;
+        yellowSeeker = true;
+      } else if (yellowSeeker) {
+        yellowSeeker = false;
+        redSeeker = true;
+      }
+      lastTagTime = millis();
+    }
+  }
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////Moving Objects Triggers
+  updateMovingPlatform();
+  updateMovingPlatformsHorizontal();
+
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////Draw Ends
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////Update Movement
+void updateMovement(int playerNum) {
+  if (playerNum == 1) {
+    velocityX = 0;
+    if (moveLeft) velocityX = -playerSpeed;
+    if (moveRight) velocityX = playerSpeed;
+    playerX += velocityX;
+    playerX = constrain(playerX, playerSize / 2, width - playerSize / 2);
+  } else if (!isConnected) { // playerNum == 2
+    player2VelocityX = 0;
+    if (player2MoveLeft) player2VelocityX = -playerSpeed;
+    if (player2MoveRight) player2VelocityX = playerSpeed;
+    player2X += player2VelocityX;
+    player2X = constrain(player2X, playerSize / 2, width - playerSize / 2);
+  }
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////Apply Gravity
+void applyGravity(int playerNum) {
+  if (playerNum == 1) {
+    velocityY += gravity;
+    playerY += velocityY;
+    if (velocityY > 20) velocityY = 20;
+  } else { // playerNum == 2
+    player2VelocityY += gravity;
+    player2Y += player2VelocityY;
+    if (player2VelocityY > 20) player2VelocityY = 20;
+  }
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////Check Collisions
+void checkCollisions(int playerNum) {
+  boolean wasOnGround = (playerNum == 1) ? isOnGround : player2IsOnGround;
+  if (playerNum == 1) {
+    isOnGround = false;
+  } else {
+    player2IsOnGround = false;
+  }
+
+  float currentX = (playerNum == 1) ? playerX : player2X;
+  float currentY = (playerNum == 1) ? playerY : player2Y;
+
+  // Vertical moving platforms
+  Rectangle[] verticalPlatforms = {
+    new Rectangle(platformX, platformY, 100, 20),
+    new Rectangle(platform2X, platform2Y, 100, 20),
+    new Rectangle(platform3X, platform3Y, 100, 20),
+    new Rectangle(platform4X, platform4Y, 100, 20)
+  };
+
+  for (Rectangle vPlat : verticalPlatforms) {
+    if (collidesWithRect(currentX, currentY, playerSize, vPlat)) {
+      resolvePlatformCollision(vPlat, playerNum);
+    }
+  }
+
+  // Horizontal moving platforms
+  Rectangle[] horizontalPlatforms = {
+    new Rectangle(platformX1, platformY1, 100, 20),
+    new Rectangle(platformX2, platformY2, 100, 20)
+  };
+
+  Rectangle carriageRect = new Rectangle(c1.PlatformX, c1.PlatformY, 150, 20);
+  if (collidesWithRect(currentX, currentY, playerSize, carriageRect)) {
+    resolvePlatformCollision(carriageRect, playerNum);
+  }
+
+  Rectangle carriageBase = new Rectangle(c1.PlatformX, c1.PlatformY, 150, 20);
+  Rectangle carriageLeft = new Rectangle(c1.PlatformX, c1.PlatformY - 75, 20, 100);
+  Rectangle carriageRight = new Rectangle(c1.PlatformX + 135, c1.PlatformY - 75, 20, 100);
+
+  Rectangle[] carriageRects = {carriageBase, carriageLeft, carriageRight};
+
+  for (Rectangle r : carriageRects) {
+    if (collidesWithRect(currentX, currentY, playerSize, r)) {
+      resolvePlatformCollision(r, playerNum);
+    }
+  }
+
+  for (Rectangle hPlat : horizontalPlatforms) {
+    if (collidesWithRect(currentX, currentY, playerSize, hPlat)) {
+      resolvePlatformCollision(hPlat, playerNum);
+    }
+  }
+
+  ////////////////////////////////////////////////////////////////////////////////////////////////////////// Check collisions with platforms
+  for (Rectangle plat : platforms) {
+    if (playerNum == 1) {
+      if (collidesWithRect(playerX, playerY, playerSize, plat)) {
+        resolvePlatformCollision(plat, 1);
+      }
+    } else {
+      if (collidesWithRect(player2X, player2Y, playerSize, plat)) {
+        resolvePlatformCollision(plat, 2);
+      }
+    }
+  }
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////Is On Ground / Was On Ground
+  if (playerNum == 1) {
+    if (isOnGround && !wasOnGround) {
+      jumpsRemaining = maxJumps;
+    }
+  } else { // playerNum == 2
+    if (player2IsOnGround && !wasOnGround) {
+      player2JumpsRemaining = maxJumps;
+    }
+  }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////Platform Collision Fix
+void resolvePlatformCollision(Rectangle r, int playerNum) {
+  float currentPX, currentPY;
+
+  if (playerNum == 1) {
+    currentPX = playerX;
+    currentPY = playerY;
+  } else { // playerNum == 2
+    currentPX = player2X;
+    currentPY = player2Y;
+  }
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////Nearest Point on Rectangle
+  float nearestX = constrain(currentPX, r.x, r.x + r.w);
+  float nearestY = constrain(currentPY, r.y, r.y + r.h);
+
+  float dx = currentPX - nearestX;
+  float dy = currentPY - nearestY;
+
+  float dist = sqrt(dx*dx + dy*dy);
+  float overlap = (playerSize / 2) - dist;
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////Collision Stuff
+  if (overlap > 0) {
+    // Normalize collision vector
+    float nx = dx / dist;
+    float ny = dy / dist;
+
+    // Push player out of collision
+    if (playerNum == 1) {
+      playerX += nx * overlap;
+      playerY += ny * overlap;
+    } else {
+      player2X += nx * overlap;
+      player2Y += ny * overlap;
+    }
+
+    // Determine collision side more carefully
+    if (abs(ny) > abs(nx)) { // Vertical collision
+      if (playerNum == 1) {
+        velocityY = 0;
+        if (ny < 0) { // Collision from top of player (landed on top of platform)
+          isOnGround = true;
+        }
+      } else {
+        player2VelocityY = 0;
+        if (ny < 0) { // Collision from top of player (landed on top of platform)
+          player2IsOnGround = true;
+        }
+      }
+    } else { // Horizontal collision
+      if (playerNum == 1) {
+        velocityX = 0;
+      } else {
+        player2VelocityX = 0;
+      }
+    }
+  }
+}
+
+
+boolean collidesWithRect(float px, float py, float size, Rectangle r) {
+  // Circle-rectangle collision check
+  float nearestX = constrain(px, r.x, r.x + r.w);
+  float nearestY = constrain(py, r.y, r.y + r.h);
+  float dx = px - nearestX;
+  float dy = py - nearestY;
+  return (dx * dx + dy * dy) < (size / 2) * (size / 2);
+}
+
+// Player to Player Collision
+void checkPlayerToPlayerCollision() {
+  float dx = playerX - player2X;
+  float dy = playerY - player2Y;
+  float distance = sqrt(dx * dx + dy * dy);
+  float minDistance = playerSize; // Sum of radii (playerSize/2 + playerSize/2)
+
+  if (distance < minDistance) {
+    float overlap = minDistance - distance;
+
+    float nx = dx / distance;
+    float ny = dy / distance;
+
+    // Push players apart by half the overlap each
+    playerX += nx * (overlap / 2);
+    playerY += ny * (overlap / 2);
+    player2X -= nx * (overlap / 2);
+    player2Y -= ny * (overlap / 2);
+
+    // Apply a simple impulse to their velocities
+    float relativeVelocityX = velocityX - player2VelocityX;
+    float relativeVelocityY = velocityY - player2VelocityY;
+    float dotProduct = relativeVelocityX * nx + relativeVelocityY * ny;
+
+    if (dotProduct < 0) {
+      float impulse = -(1.0 + 0.8) * dotProduct;
+      impulse /= (1.0 + 1.0);
+
+      velocityX += impulse * nx;
+      velocityY += impulse * ny;
+      player2VelocityX -= impulse * nx;
+      player2VelocityY -= impulse * ny;
+    }
+  }
+}
+
+
+void drawLevel() {
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////// Draw platforms
+  fill(100, 200, 255);
+  for (Rectangle plat : platforms) {
+    rect(plat.x, plat.y, plat.w, plat.h);
+  }
+
+  fill(100, 200, 50);
+  rect(platformX, platformY, 100, 20);
+  rect(platform2X, platform2Y, 100, 20);
+  rect(platform3X, platform3Y, 100, 20);
+  rect(platform4X, platform4Y, 100, 20);
+
+
+  rect(platformX1, platformY1, 100, 20);
+  rect(platformX2, platformY2, 100, 20);
+}
+
+void drawPlayer(int playerNum) {
+  String playerName;
+  float currentX, currentY;
+
+  if (playerNum == 1) { // Yellow Player
+    playerName = player1Name;
+    currentX = playerX;
+    currentY = playerY;
+    fill(255, 204, 0); // Yellow
+  } else { // Red Player
+    playerName = player2Name;
+    currentX = player2X;
+    currentY = player2Y;
+    fill(255, 0, 0); // Red
+  }
+
+  ellipse(currentX, currentY, playerSize, playerSize);
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////// Draw player name above the player
+  fill(255); // White text for names
+  textSize(16);
+  textAlign(CENTER, BOTTOM); // Align text center horizontally, bottom of text at Y
+  text(playerName, currentX, currentY - playerSize / 2 - 5); // Position slightly above the player
+}
+
+void keyPressed() {
+  connectionIP = "";
+  if (connectionScreen) {
+    if (key == BACKSPACE) connectionIP = connectionIP.substring(0, connectionIP.length()-1);
+    else {
+      connectionIP += key;
+    }
+  } else {
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////// // Player 1 controls (WASD)
+    if (key == 'a' || key == 'A') {
+      moveLeft = true;
+      p1dir = LEFT;
+    }
+    if (key == 'd' || key == 'D') {
+      moveRight = true;
+      p1dir = RIGHT;
+    }
+    if (key == 'w' || key == 'W' || key == ' ') {
+      if (jumpsRemaining > 0) {
+        velocityY = jumpForce;
+        jumpsRemaining--; // Consume one jump
+      }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////// Player 2 controls (Arrow Keys)
+    if (!isConnected) {
+      if (keyCode == LEFT) {
+        player2MoveLeft = true;
+        p2dir = LEFT;
+      }
+      if (keyCode == RIGHT) {
+        player2MoveRight = true;
+        p2dir = RIGHT;
+      }
+      if (keyCode == UP) {
+        if (player2JumpsRemaining > 0) {
+          player2VelocityY = jumpForce;
+          player2JumpsRemaining--; // Consume one jump
+        }
+      }
+    }
+  }
+}
+
+
+void keyReleased() {
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////// Player 1 controls (WASD)
+  if (key == 'a' || key == 'A') moveLeft = false;
+  if (key == 'd' || key == 'D') moveRight = false;
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////// Player 2 controls (Arrow Keys)
+  if (keyCode == LEFT) player2MoveLeft = false;
+  if (keyCode == RIGHT) player2MoveRight = false;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////// Rectangle helper class
+class Rectangle {
+  float x, y, w, h;
+  Rectangle(float x_, float y_, float w_, float h_) {
+    x = x_;
+    y = y_;
+    w = w_;
+    h = h_;
+  }
+}
+
+Carriage c1;
+
+
+
+///////////////////////////////////////////////////////////////////
+class Carriage {
+
+  float PlatformX;
+  float PlatformY;
+  float start;
+  float end;
+  boolean movingUP = false;
+  boolean movingDOWN = true;  // Start by moving down
+
+  Carriage(float x, float y, float endoffset) {
+    PlatformX = x;
+    PlatformY = y;
+    start = PlatformY;
+    end = endoffset;
+  }
+
+  void display() {
+    rect(PlatformX, PlatformY, 150, 20);
+    rect(PlatformX, PlatformY - 75, 20, 100);
+    rect(PlatformX + 135, PlatformY - 75, 20, 100);
+
+    // Move platform
+    if (movingDOWN) {
+      PlatformY += 5;
+    } else if (movingUP) {
+      PlatformY -= 5;
+    }
+
+    if (PlatformY >= end) {
+      movingDOWN = false;
+      movingUP = true;
+    } else if (PlatformY <= start) {
+      movingUP = false;
+      movingDOWN = true;
+    }
+  }
+}
+
+float platformX1 = 100;
+float platformY1 = 100;
+
+float platformX2 = 1700;
+float platformY2 = 100;
+
+// Movement flags
+boolean movingRight1 = true;
+boolean movingLeft1 = false;
+
+boolean movingRight2 = true;
+boolean movingLeft2 = false;
+
+void updateMovingPlatformsHorizontal() {
+  // Platform 1 movement
+  if (movingRight1) platformX1 += 5;
+  if (movingLeft1) platformX1 -= 5;
+
+  if (platformX1 >= 650) {
+    movingRight1 = false;
+    movingLeft1 = true;
+  } else if (platformX1 <= 100) {
+    movingLeft1 = false;
+    movingRight1 = true;
+  }
+
+  // Platform 2 movement
+  if (movingRight2) platformX2 += 5;
+  if (movingLeft2) platformX2 -= 5;
+
+  if (platformX2 >= 1700) {
+    movingRight2 = false;
+    movingLeft2 = true;
+  } else if (platformX2 <= 1150) {
+    movingLeft2 = false;
+    movingRight2 = true;
+  }
+}
+
+float p1dir;
+float p2dir;
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////// Platform positions
+float platformX = 650;
+float platformY = 800;
+
+float platform2X = 1150;
+float platform2Y = 800;
+
+float platform3X = 0;
+float platform3Y = 900;
+
+float platform4X = 1800;
+float platform4Y = 900;
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////// Platform movement flags
+boolean movingUp = false;
+boolean movingDown = false;
+
+boolean movingUp2 = false;
+boolean movingDown2 = false;
+
+boolean movingUp3 = false;
+boolean movingDown3 = false;
+
+boolean movingUp4 = false;
+boolean movingDown4 = false;
+
+
+void updateMovingPlatform() {
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////// Platform 1 movement
+  if (platformY == 800) {
+    movingUp = true;
+    movingDown = false;
+  }
+  if (movingUp && platformY > 100) {
+    platformY -= 5;
+  }
+  if (platformY == 100) {
+    movingUp = false;
+    movingDown = true;
+  }
+  if (movingDown && platformY < 800) {
+    platformY += 5;
+  }
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////// Platform 2 movement
+  if (platform2Y == 800) {
+    movingUp2 = true;
+    movingDown2 = false;
+  }
+  if (movingUp2 && platform2Y > 100) {
+    platform2Y -= 5;
+  }
+  if (platform2Y == 100) {
+    movingUp2 = false;
+    movingDown2 = true;
+  }
+  if (movingDown2 && platform2Y < 800) {
+    platform2Y += 5;
+  }
+
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////// Platform 3 movement
+  if (platform3Y >= 900) {
+    movingUp3 = true;
+    movingDown3 = false;
+  }
+  if (movingUp3 && platform3Y > 100) {
+    platform3Y -= 5;
+  }
+  if (platform3Y <= 100) {
+    movingUp3 = false;
+    movingDown3 = true;
+  }
+  if (movingDown3 && platform3Y < 900) {
+    platform3Y += 5;
+  }
+
+  // Platform 4 movement
+  if (platform4Y >= 900) {
+    movingUp4 = true;
+    movingDown4 = false;
+  }
+  if (movingUp4 && platform4Y > 100) {
+    platform4Y -= 5;
+  }
+  if (platform4Y <= 100) {
+    movingUp4 = false;
+    movingDown4 = true;
+  }
+  if (movingDown4 && platform4Y < 900) {
+    platform4Y += 5;
+  }
+}
+
+
+void mousePressed() {
+  if (inHomeScreen) {
+    if (mouseX > width / 2 - 100 && mouseX < width / 2 + 100 && mouseY > height / 2 && mouseY < height / 2 + 80) {
+      inHomeScreen = false;
+      startTime = millis();  // record the start time
+    }
+    if (mouseX > width / 2 - 115 && mouseX < width/2 + 115 + 230 && mouseY > height/2 + 100 && mouseY < height/2 + 100 + 80) {
+      connectionScreen = true;
+      inHomeScreen = false;
+    }
+  }
+  if (connectionScreen) {
+    if (mouseX > width/2 - 100 && mouseX < width/2 + 100 + 200 && mouseY > height/2 + 80 && mouseY < height/2 + 80 + 80) {
+      wsc = new WebsocketClient(this, "ws://" + connectionIP + ":8080/TAG");
+    }
+  }
+}
